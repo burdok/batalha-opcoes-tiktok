@@ -1,0 +1,8 @@
+{
+  "name": "batalha-opcoes-conector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "dependencies": {"tiktok-live-connector": "2.4.3"}
+}
