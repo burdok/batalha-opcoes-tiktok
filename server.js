@@ -10,17 +10,14 @@ const PORT=Number(process.env.PORT||3000);
 const PASS=String(process.env.ADMIN_PASSWORD||'');
 const PROD=process.env.NODE_ENV==='production';
 
-app.use(express.json({limit:'8mb'}));
+app.use(express.json({limit:'12mb'}));
 app.use(express.static('.', {index:'index.html'}));
 
 let state={
-  battle:{
-    title:'BATALHA DAS OPÇÕES',
-    subtitle:'Envie presentes para a sua opção favorita!'
-  },
+  battle:{title:'BATALHA DAS OPÇÕES',subtitle:'Envie presentes para a sua opção favorita!'},
   options:[
-    {id:crypto.randomUUID(),name:'Opção A',image:'',color:'#ffcc00',gifts:'Rosa, Coração',count:0},
-    {id:crypto.randomUUID(),name:'Opção B',image:'',color:'#9aa7b3',gifts:'Café, Perfume',count:0}
+    {id:crypto.randomUUID(),name:'Opção A',image:'',giftIcon:'',color:'#ffcc00',gifts:'Rosa, Coração',count:0},
+    {id:crypto.randomUUID(),name:'Opção B',image:'',giftIcon:'',color:'#9aa7b3',gifts:'Café, Perfume',count:0}
   ],
   lastGift:null
 };
@@ -29,107 +26,34 @@ function auth(req,res,next){
   if(!PASS&&!PROD)return next();
   if(!PASS)return res.status(503).send('ADMIN_PASSWORD não configurada');
   const h=req.headers.authorization||'';
-  if(!h.startsWith('Basic ')){
-    res.set('WWW-Authenticate','Basic realm="Batalha Admin"');
-    return res.status(401).end();
-  }
+  if(!h.startsWith('Basic ')){res.set('WWW-Authenticate','Basic realm="Batalha Admin"');return res.status(401).end()}
   try{
-    const d=Buffer.from(h.slice(6),'base64').toString();
-    const i=d.indexOf(':');
-    const u=d.slice(0,i),p=d.slice(i+1);
-    const a=Buffer.from(p),b=Buffer.from(PASS);
+    const d=Buffer.from(h.slice(6),'base64').toString(),i=d.indexOf(':'),u=d.slice(0,i),p=d.slice(i+1),a=Buffer.from(p),b=Buffer.from(PASS);
     if(u==='admin'&&a.length===b.length&&crypto.timingSafeEqual(a,b))return next();
   }catch{}
-  res.set('WWW-Authenticate','Basic realm="Batalha Admin"');
-  res.status(401).end();
+  res.set('WWW-Authenticate','Basic realm="Batalha Admin"');res.status(401).end();
 }
 
-function send(type,payload={}){
-  const msg=JSON.stringify({type,...payload,at:Date.now()});
-  for(const ws of wss.clients)if(ws.readyState===WebSocket.OPEN)ws.send(msg);
-}
-
-function norm(s=''){
-  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
-}
-function giftNames(s=''){
-  return String(s).split(',').map(norm).filter(Boolean);
-}
-function cleanOption(o={}){
-  return {
-    id:String(o.id||crypto.randomUUID()),
-    name:String(o.name||'Opção').trim().slice(0,80),
-    image:String(o.image||'').slice(0,7_500_000),
-    color:/^#[0-9a-f]{6}$/i.test(String(o.color||''))?String(o.color):'#2f7cff',
-    gifts:String(o.gifts||'').trim().slice(0,1500),
-    count:Math.max(0,Number(o.count)||0)
-  };
-}
-function cleanBattle(b={}){
-  return {
-    title:String(b.title||'BATALHA DAS OPÇÕES').trim().slice(0,100),
-    subtitle:String(b.subtitle||'Envie presentes para a sua opção favorita!').trim().slice(0,180)
-  };
-}
+function send(type,payload={}){const msg=JSON.stringify({type,...payload,at:Date.now()});for(const ws of wss.clients)if(ws.readyState===WebSocket.OPEN)ws.send(msg)}
+function norm(s=''){return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()}
+function giftNames(s=''){return String(s).split(',').map(norm).filter(Boolean)}
+function cleanOption(o={}){return{id:String(o.id||crypto.randomUUID()),name:String(o.name||'Opção').trim().slice(0,80),image:String(o.image||'').slice(0,7_500_000),giftIcon:String(o.giftIcon||'').slice(0,3_000_000),color:/^#[0-9a-f]{6}$/i.test(String(o.color||''))?String(o.color):'#2f7cff',gifts:String(o.gifts||'').trim().slice(0,1500),count:Math.max(0,Number(o.count)||0)}}
+function cleanBattle(b={}){return{title:String(b.title||'BATALHA DAS OPÇÕES').trim().slice(0,100),subtitle:String(b.subtitle||'Envie presentes para a sua opção favorita!').trim().slice(0,180)}}
 
 function registerGift(data={}){
-  const giftName=String(data.giftName||'').trim();
-  if(!giftName)return {matched:false};
-  const n=norm(giftName);
-  const opt=state.options.find(o=>giftNames(o.gifts).includes(n));
-  if(!opt)return {matched:false,giftName};
-  const repeat=Math.max(1,Number(data.repeatCount||1));
-  opt.count+=repeat;
-  state.lastGift={
-    optionId:opt.id,
-    optionName:opt.name,
-    giftName,
-    repeatCount:repeat,
-    user:data.user||null,
-    at:Date.now()
-  };
-  send('gift',{options:state.options,lastGift:state.lastGift,battle:state.battle});
-  return {matched:true,option:opt};
+  const giftName=String(data.giftName||'').trim();if(!giftName)return{matched:false};
+  const n=norm(giftName),opt=state.options.find(o=>giftNames(o.gifts).includes(n));if(!opt)return{matched:false,giftName};
+  const repeat=Math.max(1,Number(data.repeatCount||1));opt.count+=repeat;
+  state.lastGift={optionId:opt.id,optionName:opt.name,giftName,repeatCount:repeat,user:data.user||null,at:Date.now()};
+  send('gift',{options:state.options,lastGift:state.lastGift,battle:state.battle});return{matched:true,option:opt};
 }
 
-app.get('/api/health',(req,res)=>res.json({ok:true,version:1}));
+app.get('/api/health',(req,res)=>res.json({ok:true,version:2}));
 app.get('/api/state',(req,res)=>res.json(state));
-
-app.post('/api/relay',auth,(req,res)=>{
-  const event=String(req.body?.event||'');
-  if(event!=='gift')return res.status(400).json({ok:false,error:'Somente evento gift é aceito'});
-  res.json({ok:true,...registerGift(req.body?.data||{})});
-});
-
-app.post('/api/config',auth,(req,res)=>{
-  const options=Array.isArray(req.body?.options)?req.body.options:[];
-  if(!options.length)return res.status(400).json({ok:false,error:'Crie pelo menos uma opção'});
-  state.battle=cleanBattle(req.body?.battle||{});
-  state.options=options.slice(0,50).map(cleanOption);
-  send('state',state);
-  res.json({ok:true,...state});
-});
-
-app.post('/api/reset',auth,(req,res)=>{
-  for(const o of state.options)o.count=0;
-  state.lastGift=null;
-  send('state',state);
-  res.json({ok:true});
-});
-
-app.post('/api/manual',auth,(req,res)=>{
-  const id=String(req.body?.id||'');
-  const amount=Math.max(1,Math.min(999,Number(req.body?.amount||1)));
-  const opt=state.options.find(o=>o.id===id);
-  if(!opt)return res.status(404).json({ok:false,error:'Opção não encontrada'});
-  opt.count+=amount;
-  state.lastGift={optionId:opt.id,optionName:opt.name,giftName:'Manual',repeatCount:amount,user:null,at:Date.now()};
-  send('state',state);
-  res.json({ok:true});
-});
-
+app.post('/api/relay',auth,(req,res)=>{const event=String(req.body?.event||'');if(event!=='gift')return res.status(400).json({ok:false,error:'Somente evento gift é aceito'});res.json({ok:true,...registerGift(req.body?.data||{})})});
+app.post('/api/config',auth,(req,res)=>{const options=Array.isArray(req.body?.options)?req.body.options:[];if(!options.length)return res.status(400).json({ok:false,error:'Crie pelo menos uma opção'});state.battle=cleanBattle(req.body?.battle||{});state.options=options.slice(0,6).map(cleanOption);send('state',state);res.json({ok:true,...state})});
+app.post('/api/reset',auth,(req,res)=>{for(const o of state.options)o.count=0;state.lastGift=null;send('state',state);res.json({ok:true})});
+app.post('/api/manual',auth,(req,res)=>{const id=String(req.body?.id||''),amount=Math.max(1,Math.min(999,Number(req.body?.amount||1))),opt=state.options.find(o=>o.id===id);if(!opt)return res.status(404).json({ok:false,error:'Opção não encontrada'});opt.count+=amount;state.lastGift={optionId:opt.id,optionName:opt.name,giftName:'Teste',repeatCount:amount,user:null,at:Date.now()};send('state',state);res.json({ok:true})});
 app.get(['/admin','/admin.html'],auth,(req,res)=>res.sendFile(new URL('./admin.html',import.meta.url).pathname));
-
 wss.on('connection',ws=>ws.send(JSON.stringify({type:'state',...state})));
-
 server.listen(PORT,'0.0.0.0',()=>console.log(`Batalha de Opções rodando na porta ${PORT}`));
