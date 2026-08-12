@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {"node": ">=20"},
-  "scripts": {"start": "node server.js"},
+  "scripts": {"start": "node cleanup-once.js && node server.js"},
   "dependencies": {
     "express": "^5.1.0",
     "ws": "^8.18.0"
