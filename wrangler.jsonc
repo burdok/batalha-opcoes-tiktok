@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "batalha-opcoes-tiktok",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-12",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "BATTLE", "class_name": "BattleRoom" }
+    ]
+  },
+  "exports": {
+    "BattleRoom": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}
